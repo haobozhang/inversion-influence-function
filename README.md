@@ -1,115 +1,62 @@
-Understanding Deep Gradient Leakage via Inversion
-Influence Functions
+Understanding Deep Gradient Leakage via Inversion Influence Functions
 ====================================================
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 Official PyTorch Code for Paper: "Understanding Deep Gradient Leakage via Inversion
-Influence Functions" [Junyuan Hong](https://jyhong.gitlab.io/), [Haotao Wang](https://htwang14.github.io/),
-[Zhangyang Wang](https://vita-group.github.io/) and [Jiayu Zhou](https://jiayuzhou.github.io/),
-*ICLR* 2022. 
+Influence Functions" Haobo Zhang, [Junyuan Hong](https://jyhong.gitlab.io/), [Yuyang Deng](https://sites.psu.edu/yuyangdeng/),
+[Mehrdad Mahdavi](https://www.cse.psu.edu/~mzm616/) and [Jiayu Zhou](https://jiayuzhou.github.io/),
+*NeurIPS* 2023.
 
-[paper](https://openreview.net/pdf?id=_QLmakITKg) / [code](https://github.com/illidanlab/SplitMix) / [slides](https://jyhong.gitlab.io/publication/split_mix/slides.pdf) / [blog](https://jyhong.gitlab.io/publication/split_mix/)
-
-
-**TL;DR** Split-Mix is an efficient and flexible Federated Learning algorithm allowing customizing model
-sizes and robustness during both training and testing time.
+[paper](https://openreview.net/pdf?id=_QLmakITKg) / [code](https://github.com/haobozhang/inversion-influence-function)
 
 ## Overview
+Deep Gradient Leakage (DGL) is a highly effective attack that recovers private training images from gradient vectors.
+This attack casts significant privacy challenges on distributed learning from clients with sensitive data, where clients are required to share gradients.
+Defending against such attacks requires but lacks an understanding of *when and how privacy leakage happens*, mostly because of the black-box nature of deep networks.
+In this paper, we propose a novel Inversion Influence Function ($I^2F$) that establishes a closed-form connection between the recovered images and the private gradients by implicitly solving the DGL problem.
+Compared to directly solving DGL, $I^2F$ is scalable for analyzing deep networks, requiring only oracle access to gradients and Jacobian-vector products. %, which yields convenience in the privacy analysis of large models.
+We empirically demonstrate that I$^2$F effectively approximated the DGL generally on different model architectures, datasets, attack implementations, and noise-based defenses.
+With this novel tool, we provide insights into effective gradient perturbation directions, the unfairness of privacy protection, and privacy-preferred model initialization.
+Our codes are provided in https://github.com/haobozhang/inversion-influence-function.
 
-![split-mix illustration](illustration_foal.png)
+## Calculate I2F and its lower bound
 
-Federated learning (FL) provides a distributed learning framework for multiple participants to 
-collaborate learning without sharing raw data. In many practical FL scenarios, participants have 
-heterogeneous resources due to disparities in hardware and inference dynamics that require quickly 
-loading models of different sizes and levels of robustness. The heterogeneity and dynamics 
-together impose significant challenges to existing FL approaches and thus greatly limit FL's 
-applicability. In this paper, we propose a novel Split-Mix FL strategy for heterogeneous 
-participants that, once training is done, provides *in-situ customization* of model sizes and 
-robustness. Specifically, we achieve customization by learning a set of base sub-networks of 
-different sizes and robustness levels, which are later aggregated on-demand according to inference 
-requirements. This split-mix strategy achieves customization with high efficiency in communication, 
-storage, and inference. Extensive experiments demonstrate that our method provides better in-situ 
-customization than the existing heterogeneous-architecture FL methods.
+To calculate $I^2F$ or its lower bound (as defined in Eq. 4 and Eq. 5 in the paper, respectively), use the function `compute_exact_bound()` or `I2F_lb()` in `./utils.py`. Please check `./demo.py` for an example about how to use the function.
 
-## Usage
+*Note you don't need to really run the inversion process. Just input your model, data, and noise into the function, then you can easily get* $I^2F$ *or its lower bound.*
 
-**Preparation**:
-1. *Package dependencies*: Use `conda env create -f environment.yml` to create a conda env and
-activate by `conda activate splitmix`. Major dependencies include
-`pytorch, torchvision, wandb, numpy, thop` for model size customization, and `advertorch`
-for adversarial training.
-2. *Data*: Set up your paths to data in [utils/config.py](utils/config.py). Refer to 
-[FedBN](https://github.com/med-air/FedBN#dataset--pretrained-modeel) for details of Digits and 
-DomainNet datasets.
-   * Cifar10: Auto download by `python -m utils.data_utils --download=Cifar10`.
-   * Digits: Download the [FedBN Digits zip file](https://drive.google.com/file/d/1moBE_ASD5vIOaU8ZHm_Nsj0KAfX5T0Sf/view?usp=sharing) to `DATA_PATHS['Digits']'` 
-   defined in `utils.config`.  Unzip all files.
-   * DomainNet: Download the [FedBN DomainNet split file](https://drive.google.com/file/d/1_dx2-YDdvnNlQ13DTgDnLoGvMZvMyccR/view?usp=sharing) to `DATA_PATHS['DomainNetPathList']` 
-   defined in `utils.config`. Download [Clipart](http://csr.bu.edu/ftp/visda/2019/multi-source/groundtruth/clipart.zip),
-   [Infograph](http://csr.bu.edu/ftp/visda/2019/multi-source/infograph.zip),
-   [Painting](http://csr.bu.edu/ftp/visda/2019/multi-source/groundtruth/painting.zip), 
-   [Quickdraw](http://csr.bu.edu/ftp/visda/2019/multi-source/quickdraw.zip), 
-   [Real](http://csr.bu.edu/ftp/visda/2019/multi-source/real.zip), 
-   [Sketch](http://csr.bu.edu/ftp/visda/2019/multi-source/sketch.zip), put under 
-   `DATA_PATH['DomainNet']` directory. Unzip all files.
+## Package dependencies:
 
-**Train and test**:
-1. *Customize model sizes*: Set `--data` to be one of `Digits`, `DomainNet`, `Cifar10`.
-    ```shell
-    # SplitMix
-    python fed_splitmix.py --data Digits --no_track_stat # train
-    python fed_splitmix.py --data Digits --no_track_stat --test --test_slim_ratio=0.25 # test
-    # FedAvg
-    python fedavg.py --data Digits --width_scale=0.125 --no_track_stat # train
-    python fedavg.py --data Digits --width_scale=0.125 --no_track_stat --test # test
-    # SHeteroFL
-    python fed_hfl.py --data Digits --no_track_stat # train
-    python fed_hfl.py --data Digits --no_track_stat --test --test_slim_ratio=0.25 # test
-    ```
-2. Customize robustness and model sizes (during training and testing)
-   ```shell
-   # SplitMix + DAT
-   python fed_splitmix.py --adv_lmbd=0.5
-   python fed_splitmix.py --adv_lmbd=0.5 --test --test_noise=LinfPGD --test_adv_lmbd=0.1  # robust test
-   python fed_splitmix.py --adv_lmbd=0.5 --test --test_noise=none --test_adv_lmbd=0.1  # standard test
-   # individual FedAvg + AT
-   python fedavg.py --adv_lmbd=0.5
-   python fed_splitmix.py --adv_lmbd=0.5 --test --test_noise=LinfPGD  # robust test
-   python fed_splitmix.py --adv_lmbd=0.5 --test --test_noise=none  # standard test
-   ```
+Use `conda env create -f environment.yml` to create a conda env and
+activate by `conda activate I2F`. Major dependencies include
+`pytorch, torchvision, wandb, numpy, lpips`.
 
-For `fed_splitmix`, you may use `--verbose=1` to print more information and `--val_ens_only` to
-speed up evaluation by only evaluating widest models.
+## Demos:
+Here we provide several demos of results in the paper.
+You can change the arguments `model` and `dataset` to plot the RMSE vs. I2F_lb curve for different models and datasets.
 
-## Reproduce Results
+- **I2F with Gaussian noise:**
 
-We provide detailed parameter settings in [sweeps](sweeps). Check [sweeps/Slimmable.md](sweeps/Slimmable.md)
-for experiments of customizing model sizes. Check [sweeps/AT.md](sweeps/AT.md) for customizing
-robustness and joint customization of robustness and model sizes. Example use of sweep:
-```
-~> wandb sweep sweeps/fed_niid/digits.yaml
-wandb: Creating sweep from: sweeps/fed_niid/digits.yaml
-wandb: Created sweep with ID: <ID>
-wandb: View sweep at: https://wandb.ai/<unique ID>
-wandb: Run sweep agent with: wandb agent <unique ID>
-~> export CUDA_VISIBLE_DEVICES=0  # choose desired GPU
-~> wandb agent <unique ID>
-```
+    - Run `python3 ./demos/bound_I2F.py --baseline run --model ResNet18 --dataset cifar10`.
 
-Pre-trained models will be shared upon request.
+- **I2F with gradient pruning (Fig. 13 in the paper):**
+
+    - Use wandb to sweep `./sweeps/bound-pruning.yaml`.
+
+- **Inversion with different eigen vectors as the gradient noise (Fig.5 in the paper):**
+
+    - Run `python3 ./demos/invert_eigen_vectors.py --baseline run --model ResNet18 --dataset cifar10`.
+
+- **I2F with different model initializations (Fig. 7 in the paper):**
+
+    - Use wandb to sweep `./sweeps/invert-initilization.yaml`.
+
+- **The effect of different $\epsilon$ (Sec. 4 in the paper):**
+
+    - Use wandb to sweep `./sweeps/tune-epsilon.yaml`.
 
 ## Citation
 
-```bibtex
-@inproceedings{hong2022efficient,
-  title={Efficient Split-Mix Federated Learning for On-Demand and In-Situ Customization},
-  author={Hong, Junyuan and Wang, Haotao and Wang, Zhangyang and Zhou, Jiayu},
-  booktitle={ICLR},
-  year={2022}
-}
-```
-
 ## Acknowledgement
-
-This research was supported by the National Science Foundation (IIS-2212174, IIS-1749940), National Institute of Aging (IRF1AG072449), and the Office of Naval Research (N00014-20-1-2382).
+This research was supported by the National Science Foundation (IIS-2212174, IIS-1749940), National Institute of Aging (IRF1AG072449), and the Office of Naval Research (N00014- 20-1-2382).
