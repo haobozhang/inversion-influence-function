@@ -8,7 +8,7 @@ Influence Functions" Haobo Zhang, [Junyuan Hong](https://jyhong.gitlab.io/), [Yu
 [Mehrdad Mahdavi](https://www.cse.psu.edu/~mzm616/) and [Jiayu Zhou](https://jiayuzhou.github.io/),
 *NeurIPS* 2023.
 
-[paper](https://openreview.net/pdf?id=_QLmakITKg) / [code](https://github.com/haobozhang/inversion-influence-function)
+[paper](https://arxiv.org/pdf/2309.13016.pdf) / [code](https://github.com/haobozhang/inversion-influence-function)
 
 ## Overview
 Deep Gradient Leakage (DGL) is a highly effective attack that recovers private training images from gradient vectors.
@@ -55,8 +55,6 @@ You can change the arguments `model` and `dataset` to plot the RMSE vs. I2F_lb c
 - **The effect of different $\epsilon$ (Sec. 4 in the paper):**
 
     - Use wandb to sweep `./sweeps/tune-epsilon.yaml`.
-
-## Citation
 
 ## Acknowledgement
 This research was supported by the National Science Foundation (IIS-2212174, IIS-1749940), National Institute of Aging (IRF1AG072449), and the Office of Naval Research (N00014- 20-1-2382).
