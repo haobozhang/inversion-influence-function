@@ -278,8 +278,7 @@ def invert():
                 output_denormalized = torch.clamp(output, 0, 1)
             torchvision.utils.save_image(output_denormalized, os.path.join(images_dir, 'img%d_output.png'%(i)), nrow=5)
 
-            recover_info = f"Batch: {i} | Idx: {inv_idx} | EigenValue: {eigenvalues[inv_idx].item()} | Rec. loss: {inv_metrics['RecLoss']:2.4f} | MSE: {inv_metrics['MSE']:2.4f} | PSNR: {inv_metrics['PSNR']:4.2f} | SSIM: {inv_metrics['SSIM']:2.4f} " \
-                f"| FMSE: {inv_metrics['FMSE']:2.4e} | Time: {end_time:4.2f}\n"
+            recover_info = f"Batch: {i} | Idx: {inv_idx} | EigenValue: {eigenvalues[inv_idx].item()} | Rec. loss: {inv_metrics['RecLoss']:2.4f} | MSE: {inv_metrics['MSE']:2.4f} | SSIM: {inv_metrics['SSIM']:2.4f}\n"
             print(recover_info)
             log.write(recover_info)
             bound_log.write(f"Batch: {i} | Idx: {inv_idx} | " + step_info)

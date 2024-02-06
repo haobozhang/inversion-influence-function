@@ -54,7 +54,7 @@ def load_model(model, num_classes=10, num_channels=3, data_shape=(3, 32, 32), se
     elif model == 'TinyMLP':
         return TinyMLP(num_classes=num_classes, data_shape=data_shape)
     elif model == 'LeNet':
-        return LeNet(num_classes=num_classes, num_channels=num_channels, width=data_shape[-1])
+        return ConvNet5(num_classes=num_classes, num_channels=num_channels, width=data_shape[-1])
     elif model == 'ResNet20':
         return ResNet(torchvision.models.resnet.BasicBlock, [3, 3, 3], num_channels=num_channels, num_classes=num_classes, base_width=16)
     elif model == 'ResNet18':
@@ -69,8 +69,6 @@ def load_model(model, num_classes=10, num_channels=3, data_shape=(3, 32, 32), se
         return ResNet(torchvision.models.resnet.Bottleneck, [3, 8, 36, 3], num_channels=num_channels, num_classes=num_classes, base_width=64)
     elif model == 'conv8':
         return ConvNet(width=32, num_channels=num_channels, num_classes=num_classes)
-    elif model == 'conv5':
-        return ConvNet5(num_channels=num_channels, num_classes=num_classes)
     elif model == 'dlg':
         return DLG_model()
     elif model == 'gs':

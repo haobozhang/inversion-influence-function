@@ -179,7 +179,7 @@ def batch_recover(model:nn.Module, ground_truth:torch.Tensor, labels:torch.Tenso
             f"| Time: {end_time:4.2f}")
     step_info = ''
     if args.stage == 'defend':
-        step_info = f'JtDelta: {JtDelta.item()} | MaxEigenValue: {max_eigen_value.item()} | MeanInvLambda: {mean_lambda_inv.item()} | NoiseNorm: {noise_norm.item()} | InputNorm: {input_grad_norm.item()} | NoisyInputNorm: {noisy_input_grad_norm.item()} | MSE: {test_mse.item()} | PSNR: {test_psnr}\n'
+        step_info = f'JtDelta: {JtDelta.item()} | MaxEigenValue: {max_eigen_value.item()} | MeanInvLambda: {mean_lambda_inv.item()} | MSE: {test_mse.item()}\n'
     return output, inv_metrics, step_info, norm_ratio
 
 def invert():
@@ -258,8 +258,7 @@ def invert():
                 output_denormalized = torch.clamp(output, 0, 1)
             torchvision.utils.save_image(output_denormalized, os.path.join(images_dir, 'img%d_output.png'%(i)), nrow=5)
             
-            recover_info = f"Batch: {i} | Idx: {inv_idx} | MeanInvLambda: {mean_lambda_inv.item()} | Rec. loss: {inv_metrics['RecLoss']:2.4f} | MSE: {inv_metrics['MSE']:2.4f} | PSNR: {inv_metrics['PSNR']:4.2f} | SSIM: {inv_metrics['SSIM']:2.4f} | " \
-                f"| FMSE: {inv_metrics['FMSE']:2.4e} | Time: {end_time:4.2f}\n"
+            recover_info = f"Batch: {i} | Idx: {inv_idx} | MeanInvLambda: {mean_lambda_inv.item()} | Rec. loss: {inv_metrics['RecLoss']:2.4f} | MSE: {inv_metrics['MSE']:2.4f} | SSIM: {inv_metrics['SSIM']:2.4f}\n"
             print(recover_info)
             log.write(recover_info)
             bound_log.write(f"Batch: {i} | Idx: {inv_idx} | " + step_info)

@@ -1,5 +1,5 @@
 '''
-    Codes for inversion with aug data.
+    Calculate the I2F with noise into gradient.
 '''
 import os, sys, math, random, argparse, time
 import numpy as np
@@ -41,12 +41,6 @@ def set_random_seed(seed=1):
     torch.cuda.manual_seed_all(seed)
     random.seed(seed)
 
-def load_model() -> nn.Module:
-    model_path = f'{data_root}/checkpoints/{args.model}-{args.dataset}-epoch{args.epoch}.pt'
-    print(f"Load model from {args.model}-{args.dataset}")
-    model = torch.load(model_path, map_location=setup['device'])['model']
-    return model
-
 def weights_init(m):
     if hasattr(m, "weight"):
         m.weight.data.uniform_(-0.5, 0.5)
@@ -69,10 +63,12 @@ def batch_recover(model:nn.Module, ground_truth:torch.Tensor, labels:torch.Tenso
     # defend:
     elif args.stage == 'defend':
         input_gradient, noise, def_stats = defend(args, model, ground_truth, labels, data_shape, setup)
-        # compute max eigen value:
+        # compute I2F:
         '''
-            ||g_0||: input_grad_norm; \epsilon: MSE;
-            \alpha||J*\delta||: JtDelta; ||\alpha\delta||: noise_norm;
+            ||g_0||: input_grad_norm;
+            \epsilon: MSE;
+            ||J*\delta||: JtDelta;
+            ||\delta||: noise_norm;
         '''
         model.zero_grad()
         grad_gt = deepcopy(ground_truth)
@@ -130,7 +126,6 @@ def batch_recover(model:nn.Module, ground_truth:torch.Tensor, labels:torch.Tenso
     mean_ssim, batch_ssims = ssim_batch(output, ground_truth) # original of Geiping
     feat_mse = (model(output.detach())- model(ground_truth)).pow(2).mean()
 
-    # lpips:
     with torch.no_grad():
         if args.dataset != 'mnist':
             lpips_alexnet = alexnet.forward(ground_truth.detach().squeeze(0).to(setup['device']), output.detach().squeeze(0).to(setup['device']))
@@ -153,7 +148,6 @@ def batch_recover(model:nn.Module, ground_truth:torch.Tensor, labels:torch.Tenso
         'vgg': lpips_vgg.item(),
         'squeeze': lpips_squeeze.item(),
     }
-    # wandb.log(inv_metrics)
     if args.stage == 'defend':
         bound_coefs['MSE'] = test_mse.item()
         bound_coefs.update(inv_metrics)
@@ -161,12 +155,12 @@ def batch_recover(model:nn.Module, ground_truth:torch.Tensor, labels:torch.Tenso
     print(f"Rec. loss: {inv_stats['opt']:2.4f} | MSE: {test_mse:2.4f} | PSNR: {test_psnr:4.2f} | Time: {end_time:4.2f}")
     step_info = ''
     if args.stage == 'defend':
-        step_info = f'JtDelta: {JtDelta.item()} | MaxEigenValue: {max_eigen_value.item()} | NoiseNorm: {noise_norm} | InputNorm: {input_grad_norm} | NoisyInputNorm: {noisy_input_grad_norm} | MSE: {test_mse.item()}' \
-                f" | alexnet: {lpips_alexnet.item()} | vgg: {lpips_vgg.item()} | squeeze: {lpips_squeeze.item()} | SSIM: {mean_ssim}\n"
+        step_info = f'JtDelta: {JtDelta.item()} | MaxEigenValue: {max_eigen_value.item()} | MSE: {test_mse.item()}' \
+                f" | vgg: {lpips_vgg.item()} | SSIM: {mean_ssim}\n"
     return output, inv_stats, inv_metrics, step_info, norm_ratio, bound_coefs
 
 def invert():
-    invert_result_dir = os.path.join(result_dir, '%s-%s-seed%d'%(args.model, args.dataset, args.seed))
+    invert_result_dir = os.path.join(result_dir, '-%s-%s-seed%d'%(args.model, args.dataset, args.seed))
     os.makedirs(invert_result_dir, exist_ok=True)
     inversion_log_file = os.path.join(invert_result_dir, 'log.log')
     bound_log_file = os.path.join(invert_result_dir, 'bound.log')
@@ -209,8 +203,7 @@ def invert():
             output_denormalized = torch.clamp(output, 0, 1)
         torchvision.utils.save_image(output_denormalized, os.path.join(images_dir, 'img%d_output.png'%(i)), nrow=5)
         
-        recover_info = f"Batch: {i} | Idx: {i} | Rec. loss: {inv_metrics['RecLoss']:2.4f} | MSE: {inv_metrics['MSE']:2.4f} | PSNR: {inv_metrics['PSNR']:4.2f} | SSIM: {inv_metrics['SSIM']:2.4f} " \
-            f"| FMSE: {inv_metrics['FMSE']:2.4e} | Time: {end_time:4.2f}\n"
+        recover_info = f"Batch: {i} | Idx: {i} | Rec. loss: {inv_metrics['RecLoss']:2.4f} | MSE: {inv_metrics['MSE']:2.4f} | SSIM: {inv_metrics['SSIM']:2.4f}\n"
         print(recover_info)
         log.write(recover_info)
         bound_log.write(step_info)
@@ -229,15 +222,16 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--seed', type=int, default=1, help='random seed')
     parser.add_argument('--baseline', type=str, default='debug', choices=['debug', 'run'], help='the baseline whose setting is used')
-    parser.add_argument('--model', type=str, default='ResNet18', )
-    parser.add_argument('--dataset', type=str, default='cifar10')
-    parser.add_argument('--epoch', type=int, default=0, choices=[0, 20, 40, 60, 80], help='epoch choice to load checkpoint')
+    parser.add_argument('--model', type=str, default='ResNet152', )
+    parser.add_argument('--dataset', type=str, default='imagenet')
+    parser.add_argument('--epoch', type=int, default=0, choices=[0, 50, 100, 150], help='epoch choice to load checkpoint')
+    parser.add_argument('--use_wandb', action='store_true')
     # params for inversion:
     parser.add_argument('--num_inversion_batches', type=int, default=20)
     parser.add_argument('--num_img_per_invbatch', type=int, default=1)
     parser.add_argument('--indices', type=str, default='def')
     parser.add_argument('--inv_goal', type=str, default='sim', choices=['l2', 'l1', 'sim'], help='the loss function used in GI attacks')
-    parser.add_argument('--inv_iterations', type=int, default=10001)
+    parser.add_argument('--inv_iterations', type=int, default=24000)
     parser.add_argument('--inv_optimizer', type=str, default='adam', choices=['adam', 'sgd', 'lbfgs'])
     parser.add_argument('--inv_lr', type=float, default=0.1, help='from Geiping: 0.1 for GS and 1e-4 for DLG')
     parser.add_argument('--tv_loss', type=float, default=0, help='tv loss coefficient')
@@ -246,12 +240,11 @@ if __name__ == '__main__':
     parser.add_argument('--trained_model', action='store_true', help='whether to use uniform initialization of model')
     # params for modifying gradients:
     parser.add_argument('--stage', type=str, default='defend', choices=['pure', 'defend'], help='whether to modify the gradients')
-    parser.add_argument('--modify', type=str, default='noise', choices=['noise', 'scale', 'zeros', 'random', 'svd', 'clipsvd', 'pga', 'soteria', 'dp', 'pruning'], help='use which method to modify the gradients; "zero" means set grad as zeros; "random" means set grad as random noise')
+    parser.add_argument('--modify', type=str, default='noise', choices=['noise', 'pruning'], help='use which method to modify the gradients; "zero" means set grad as zeros; "random" means set grad as random noise')
     # params for noise generate:
     parser.add_argument('--mean', type=str, default='0', choices=['0', 'batch'], help='the mean of sampling noise')
-    parser.add_argument('--std', type=str, default='1e-3', help='variance of sampling noise; can be a scalar (e.g., 1), or to be adaptive var (e.g., abs1)')
-    parser.add_argument('--var', type=str, default='1e-3', help='variance of sampling noise; can be a scalar (e.g., 1), or to be adaptive var (e.g., abs1)')
-    parser.add_argument('--regu', type=float, default=1, help='the regularizer term of bound GD computing')
+    parser.add_argument('--std', type=str, default='1e-3', help='std of sampling noise; can be a scalar (e.g., 1)')
+    parser.add_argument('--var', type=str, default='1e-3', help='variance of sampling noise; can be a scalar (e.g., 1)')
     # params for noise control:
     parser.add_argument('--energy', type=float, default=1, help='noise energy control or the scaling factor when modify==scale; should be deactive if args.project is True; also the noise multiplier of DP')
     args = parser.parse_args()
@@ -283,7 +276,7 @@ if __name__ == '__main__':
     if args.dataset in ['mnist', 'fmnist', 'mmnist']: args.num_channels = 1
     else: args.num_channels = 3
     # data loaders
-    args.train_bsz = 1
+    args.train_bsz = 1024
     args.train_lr = 0.1
     args.normalize = True
     if args.model == 'ResNet18': args.normalize = True
@@ -292,23 +285,25 @@ if __name__ == '__main__':
         train_set, test_set, trainloader, testloader, dm, ds = baseline_utils.load_datasets(args, args.dataset, val=False, resize=resize, normalize=args.normalize)
     else:
         loss_fn, trainset, validset, testset, trainloader, validloader =  inversefed.construct_dataloaders('ImageNet', defs, 
-                                                                            data_path=os.path.join('/localscratch2/hbzhang', "ILSVRC2012"))
+                                                                            data_path=os.path.join('/localscratch2/hbzhang/data', "ILSVRC2012"))
         test_set = validloader.dataset
-    # compute the mean and std of training dataset:
     dm = torch.as_tensor(dm, **setup)[:, None, None]
     ds = torch.as_tensor(ds, **setup)[:, None, None]
 
     '''set modules:'''
-    model = load_model()
-    # if not args.model.startswith('ResNet'):
-    #     model.apply(weights_init)
+    if args.dataset == 'imagenet':
+        if args.model == 'ResNet18': model = torchvision.models.resnet18(pretrained=False)
+        elif args.model == 'ResNet50': model = torchvision.models.resnet50(pretrained=False)
+        elif args.model == 'ResNet101': model = torchvision.models.resnet101(pretrained=True)
+        elif args.model == 'ResNet152': model = torchvision.models.resnet152(pretrained=True)
+    else:
+        model = baseline_utils.load_model('vit', num_classes=args.num_classes, data_shape=data_shape, num_channels=args.num_channels)
     model.to(**setup)
     model.eval()
     criterion = nn.CrossEntropyLoss()
 
-    result_dir = 'results_bound_training'
-    result_dir = os.path.join(data_root, result_dir)
-    wandb.init(project='I2F', name='bound-training', config=vars(args), mode='online')
+    wandb.init(project='I2F', name='bound-I2F', config=vars(args), mode='online')
+    result_dir = os.path.join(data_root, 'result_bound_I2F')
 
     # lpips:
     alexnet = lpips.LPIPS(net='alex').to(setup['device'])

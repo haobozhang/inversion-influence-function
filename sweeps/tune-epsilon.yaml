@@ -7,7 +7,7 @@ command:
 - "--num_inversion_batches=5"
 - "--tv_loss=0"
 - "--dataset=mnist"
-- "--model=conv5"
+- "--model=LeNet"
 - "--inv_goal=l2"
 - ${args}
 method: grid
@@ -17,4 +17,4 @@ parameters:
       - 0.1
       - 1
       - 10
-program: tune_epsilon.py
+program: demos/codes/tune_epsilon.py

@@ -41,6 +41,12 @@ def set_random_seed(seed=1):
     torch.cuda.manual_seed_all(seed)
     random.seed(seed)
 
+def load_model() -> nn.Module:
+    model_path = f'{data_root}/checkpoints/{args.model}-{args.dataset}-epoch{args.epoch}.pt'
+    print(f"Load model from {args.model}-{args.dataset}")
+    model = torch.load(model_path, map_location=setup['device'])['model']
+    return model
+
 def weights_init(m):
     if hasattr(m, "weight"):
         m.weight.data.uniform_(-0.5, 0.5)
@@ -79,8 +85,6 @@ def batch_recover(model:nn.Module, ground_truth:torch.Tensor, labels:torch.Tenso
         _inputs = deepcopy(ground_truth)
         _inputs.requires_grad = True
         max_eigen_value = utils.max_eigen_val(model, _inputs, labels, setup['device'])
-        exact_bound_regu = utils.compute_exact_bound(args, model, deepcopy(ground_truth), labels, noise, setup, regu=args.regu)
-        exact_bound_regu = torch.norm(exact_bound_regu)
 
         input_grad_norm = def_stats['InputNorm']
         noise_norm = def_stats['NoiseNorm']
@@ -91,7 +95,6 @@ def batch_recover(model:nn.Module, ground_truth:torch.Tensor, labels:torch.Tenso
             'InputNorm': input_grad_norm,
             'NoisyInputNorm': noisy_input_grad_norm,
             'MaxEigenValue': max_eigen_value.item(),
-            'ExactReguBound': exact_bound_regu.item(),
         }
             
         input_grad_norm, noise_norm, norm_ratio, noisy_input_grad_norm = \
@@ -158,14 +161,13 @@ def batch_recover(model:nn.Module, ground_truth:torch.Tensor, labels:torch.Tenso
     print(f"Rec. loss: {inv_stats['opt']:2.4f} | MSE: {test_mse:2.4f} | PSNR: {test_psnr:4.2f} | Time: {end_time:4.2f}")
     step_info = ''
     if args.stage == 'defend':
-        step_info = f'JtDelta: {JtDelta.item()} | MaxEigenValue: {max_eigen_value.item()} | NoiseNorm: {noise_norm} | InputNorm: {input_grad_norm} | NoisyInputNorm: {noisy_input_grad_norm} | MSE: {test_mse.item()}' \
-                f" | alexnet: {lpips_alexnet.item()} | vgg: {lpips_vgg.item()} | squeeze: {lpips_squeeze.item()} | SSIM: {mean_ssim}\n"
+        step_info = f'JtDelta: {JtDelta.item()} | MaxEigenValue: {max_eigen_value.item()} | MSE: {test_mse.item()}' \
+                f" | vgg: {lpips_vgg.item()} | SSIM: {mean_ssim}\n"
     return output, inv_stats, inv_metrics, step_info, norm_ratio, bound_coefs
 
 def invert():
     invert_result_dir = os.path.join(result_dir, '%s-%s-seed%d'%(args.model, args.dataset, args.seed))
     os.makedirs(invert_result_dir, exist_ok=True)
-    # invert_result_dir = result_dir
     inversion_log_file = os.path.join(invert_result_dir, 'log.log')
     bound_log_file = os.path.join(invert_result_dir, 'bound.log')
     log = open(inversion_log_file, 'w+')
@@ -206,9 +208,8 @@ def invert():
         else:
             output_denormalized = torch.clamp(output, 0, 1)
         torchvision.utils.save_image(output_denormalized, os.path.join(images_dir, 'img%d_output.png'%(i)), nrow=5)
-
-        recover_info = f"Batch: {i} | Idx: {i} | Rec. loss: {inv_metrics['RecLoss']:2.4f} | MSE: {inv_metrics['MSE']:2.4f} | PSNR: {inv_metrics['PSNR']:4.2f} | SSIM: {inv_metrics['SSIM']:2.4f} " \
-            f"| FMSE: {inv_metrics['FMSE']:2.4e} | JtDelta: {bound_coefs['JtDelta']} | MaxEigenVal: {bound_coefs['MaxEigenValue']} | ExactBound: {bound_coefs['ExactReguBound']} | Time: {end_time:4.2f}\n"
+        
+        recover_info = f"Batch: {i} | Idx: {i} | Rec. loss: {inv_metrics['RecLoss']:2.4f} | MSE: {inv_metrics['MSE']:2.4f} | SSIM: {inv_metrics['SSIM']:2.4f}\n"
         print(recover_info)
         log.write(recover_info)
         bound_log.write(step_info)
@@ -229,22 +230,22 @@ if __name__ == '__main__':
     parser.add_argument('--baseline', type=str, default='debug', choices=['debug', 'run'], help='the baseline whose setting is used')
     parser.add_argument('--model', type=str, default='ResNet18', )
     parser.add_argument('--dataset', type=str, default='cifar10')
-    parser.add_argument('--epoch', type=int, default=0, choices=[0, 50, 100, 150], help='epoch choice to load checkpoint')
+    parser.add_argument('--epoch', type=int, default=0, choices=[0, 20, 40, 60, 80], help='epoch choice to load checkpoint')
     # params for inversion:
     parser.add_argument('--num_inversion_batches', type=int, default=20)
     parser.add_argument('--num_img_per_invbatch', type=int, default=1)
     parser.add_argument('--indices', type=str, default='def')
     parser.add_argument('--inv_goal', type=str, default='sim', choices=['l2', 'l1', 'sim'], help='the loss function used in GI attacks')
-    parser.add_argument('--inv_iterations', type=int, default=24000)
+    parser.add_argument('--inv_iterations', type=int, default=10001)
     parser.add_argument('--inv_optimizer', type=str, default='adam', choices=['adam', 'sgd', 'lbfgs'])
     parser.add_argument('--inv_lr', type=float, default=0.1, help='from Geiping: 0.1 for GS and 1e-4 for DLG')
-    parser.add_argument('--tv_loss', type=float, default=0., help='tv loss coefficient')
+    parser.add_argument('--tv_loss', type=float, default=0, help='tv loss coefficient')
     # some actions:
     parser.add_argument('--uniform_init', action='store_true', help='whether to use uniform initialization of model')
     parser.add_argument('--trained_model', action='store_true', help='whether to use uniform initialization of model')
     # params for modifying gradients:
     parser.add_argument('--stage', type=str, default='defend', choices=['pure', 'defend'], help='whether to modify the gradients')
-    parser.add_argument('--modify', type=str, default='noise', choices=['noise', 'pruning'], help='use which method to modify the gradients; "zero" means set grad as zeros; "random" means set grad as random noise')
+    parser.add_argument('--modify', type=str, default='noise', choices=['noise', 'scale', 'zeros', 'random', 'svd', 'clipsvd', 'pga', 'soteria', 'dp', 'pruning'], help='use which method to modify the gradients; "zero" means set grad as zeros; "random" means set grad as random noise')
     # params for noise generate:
     parser.add_argument('--mean', type=str, default='0', choices=['0', 'batch'], help='the mean of sampling noise')
     parser.add_argument('--std', type=str, default='1e-3', help='variance of sampling noise; can be a scalar (e.g., 1), or to be adaptive var (e.g., abs1)')
@@ -283,7 +284,7 @@ if __name__ == '__main__':
     # data loaders
     args.train_bsz = 1
     args.train_lr = 0.1
-    args.normalize = False
+    args.normalize = True
     if args.model == 'ResNet18': args.normalize = True
     if args.inv_goal == 'sim': args.normalize = True
     if args.dataset != 'imagenet':
@@ -297,16 +298,16 @@ if __name__ == '__main__':
     ds = torch.as_tensor(ds, **setup)[:, None, None]
 
     '''set modules:'''
-    model = baseline_utils.load_model(args.model, num_classes=args.num_classes, data_shape=data_shape, num_channels=args.num_channels)
-    if not args.model.startswith('ResNet'):
-        model.apply(weights_init)
+    model = load_model()
+    # if not args.model.startswith('ResNet'):
+    #     model.apply(weights_init)
     model.to(**setup)
     model.eval()
     criterion = nn.CrossEntropyLoss()
 
-    result_dir = 'results_tune_epsilon'
+    result_dir = 'results_bound_training'
     result_dir = os.path.join(data_root, result_dir)
-    wandb.init(project='I2F', name='tune-epsilon', config=vars(args), mode='online')
+    wandb.init(project='I2F', name='bound-training', config=vars(args), mode='online')
 
     # lpips:
     alexnet = lpips.LPIPS(net='alex').to(setup['device'])
